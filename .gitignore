@@ -6,3 +6,6 @@ data/
 
 # IDE
 .vscode/
+
+# experiments
+runs/
