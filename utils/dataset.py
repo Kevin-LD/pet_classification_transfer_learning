@@ -58,7 +58,8 @@ def get_train_val_dataloaders(root='data', batch_size=32, image_size=224, num_wo
         batch_size=batch_size,
         shuffle=True,
         persistent_workers=(num_workers > 0),
-        num_workers=num_workers
+        num_workers=num_workers,
+        pin_memory=True
     )
 
     val_loader = DataLoader(
@@ -66,7 +67,8 @@ def get_train_val_dataloaders(root='data', batch_size=32, image_size=224, num_wo
         batch_size=batch_size,
         shuffle=False,
         persistent_workers=(num_workers > 0),
-        num_workers=num_workers
+        num_workers=num_workers,
+        pin_memory=True
     )
 
     return train_loader, val_loader
@@ -100,7 +102,8 @@ def get_test_dataloader(root='data', batch_size=32, image_size=224, num_workers=
         batch_size=batch_size,
         shuffle=False,
         persistent_workers=(num_workers > 0),
-        num_workers=num_workers
+        num_workers=num_workers,
+        pin_memory=True
     )
 
     return test_loader

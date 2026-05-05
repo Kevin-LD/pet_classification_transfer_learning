@@ -29,7 +29,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device):
     # 使用 with 语句，确保每轮结束后释放进度条资源
     with tqdm(dataloader, desc="Training", leave=False) as pbar:
         for inputs, labels in pbar:
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels = inputs.to(device, non_blocking=True), labels.to(device, non_blocking=True)
 
             optimizer.zero_grad()
             outputs = model(inputs)

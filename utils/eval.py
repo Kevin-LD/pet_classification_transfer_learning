@@ -13,7 +13,7 @@ def evaluate(model, dataloader, criterion, device):
     with torch.no_grad():
         with tqdm(dataloader, desc="Evaluating", leave=False) as pbar:
             for inputs, labels in pbar:
-                inputs, labels = inputs.to(device), labels.to(device)
+                inputs, labels = inputs.to(device, non_blocking=True), labels.to(device, non_blocking=True)
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)
 
