@@ -44,7 +44,8 @@ def plot_history(history_path):
     val_loss = [x['val_loss'] for x in epoch_data]
     train_acc = [x['train_acc'] for x in epoch_data]
     val_acc = [x['val_acc'] for x in epoch_data]
-    epoch_lr = [x['lr'] for x in epoch_data]
+    head_lrs = [x.get('head_lr', x.get('lr', 0)) for x in epoch_data]
+    backbone_lrs = [x.get('backbone_lr', 0) for x in epoch_data]
 
     iter_loss = [x['loss'] for x in iter_data]
     iters = range(1, len(iter_loss) + 1)
@@ -74,11 +75,31 @@ def plot_history(history_path):
     axs[0, 1].xaxis.set_major_locator(MaxNLocator(integer=True))
 
     # --- [1, 0] Epoch 级别学习率变化 ---
-    axs[1, 0].plot(epochs, epoch_lr, 'orange', marker='d', label='LR')
-    axs[1, 0].set_title('Learning Rate Schedule', fontsize=13)
+    axs[1, 0].plot(epochs, head_lrs, 'orange', marker='d', label='Head LR')
+    axs[1, 0].plot(epochs, backbone_lrs, 'purple', marker='x', linestyle='--', label='Backbone LR')
+    
+    # 自动识别 Backbone 学习率为 0 的 Epoch
+    frozen_epochs = [e for e, lr in zip(epochs, backbone_lrs) if lr <= 0]
+    if frozen_epochs:
+        # 计算文字放置的中心位置 (x 坐标)
+        text_x = sum(frozen_epochs) / len(frozen_epochs)
+        # 添加标注
+        axs[1, 0].text(
+            text_x, 0.02,                     # x 在冻结期中间，y 位于坐标轴底部向上 2% 的位置
+            'Backbone Frozen\n(LR=0)', 
+            transform=axs[1, 0].get_xaxis_transform(), # 关键：y轴使用比例坐标，不受 log 影响
+            color='purple', fontsize=6, fontweight='bold',
+            ha='center', va='bottom',
+            bbox=dict(facecolor='white', alpha=0.7, edgecolor='purple', boxstyle='round,pad=0.3')
+        )
+
+    axs[1, 0].set_title('Learning Rate Schedule (Grouped)', fontsize=13)
     axs[1, 0].set_xlabel('Epoch')
     axs[1, 0].set_ylabel('Learning Rate')
-    axs[1, 0].set_yscale('log') # 学习率通常用对数坐标观察更直观
+    
+    # 保持对数坐标以观察 Head LR 和解冻后的 Backbone LR
+    axs[1, 0].set_yscale('log', nonpositive='mask') 
+    
     axs[1, 0].legend()
     axs[1, 0].grid(True, which="both", linestyle='--', alpha=0.5)
     axs[1, 0].xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -94,7 +115,6 @@ def plot_history(history_path):
         l1 = axs[1, 1].plot(iters, iter_loss, color='lightblue', alpha=0.3, label='Iter Loss (Raw)')
         l2 = axs[1, 1].plot(iters, smooth_curve(iter_loss, factor=0.9), color=color_loss, label='Iter Loss (Smoothed)')
         axs[1, 1].tick_params(axis='y', labelcolor=color_loss)
-
 
         # 合并图例
         lns = l1 + l2
@@ -120,7 +140,6 @@ def plot_history(history_path):
     plt.show()
 
 if __name__ == '__main__':
-    # 获取脚本所在目录的上一级作为根目录
     current_dir = os.path.dirname(os.path.abspath(__file__))
     
     parser = argparse.ArgumentParser(description='Visualize training history from JSON.')
@@ -128,5 +147,4 @@ if __name__ == '__main__':
                         help='history.json 的完整路径')
     
     args = parser.parse_args()
-    
     plot_history(args.path)
