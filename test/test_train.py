@@ -78,13 +78,15 @@ class TestTrainingPipeline(unittest.TestCase):
             self.assertTrue(os.path.exists(history_file), "未能生成 history.json")
             
             with open(history_file, 'r') as f:
-                history = json.load(f)
-                
-            self.assertEqual(len(history), args.epochs, "保存的 Epoch 数量与配置不符")
+                history_data = json.load(f)
+
+            epoch_history = history_data['epoch_history']
+
+            self.assertEqual(len(epoch_history), args.epochs, "保存的 Epoch 数量与配置不符")
             
             # 5. 断言指标：Loss 必须下降，Acc 必须上升
-            first_epoch = history[0]
-            last_epoch = history[-1]
+            first_epoch = epoch_history[0]
+            last_epoch = epoch_history[-1]
             
             print("\n=== Sanity Check 结果 ===")
             print(f"初始 Train Loss: {first_epoch['train_loss']:.4f} | Acc: {first_epoch['train_acc']:.4f}")
