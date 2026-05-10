@@ -33,7 +33,10 @@ def get_base_args():
         lr_head=1e-3,
         weight_decay=1e-4,
         batch_size=32,
-        epochs=10,
+        
+        # 搜索阶段固定配置
+        epochs=30,               # 固定搜索 Epochs 为 30
+        warmup_epochs=0,         # 暂时关闭 Warmup
 
         # Scheduler 默认值
         lr_scheduler='CosineAnnealingLR',
@@ -48,7 +51,7 @@ def run_search(cli_args):
     search_type = cli_args.type
     num_trials = cli_args.trials
 
-    # 1. 定义搜索空间
+    # 1. 定义搜索空间 (新增了 weight_decay)
     search_space = {
         'lr_head': {
             'range': [1e-4, 5e-2], 
@@ -60,14 +63,16 @@ def run_search(cli_args):
             'scale': 'log', 
             'grid_values': [1e-5, 5e-5]
         },
+        'weight_decay': {
+            'range': [1e-5, 1e-2], 
+            'scale': 'log', 
+            'grid_values': [1e-5, 1e-4, 1e-3]
+        },
         'optimizer': {
             'grid_values': ['AdamW', 'SGD']
         },
         'batch_size': {
             'grid_values': [32, 64]
-        },
-        'epochs': {
-            'grid_values': [15]
         }
     }
 
