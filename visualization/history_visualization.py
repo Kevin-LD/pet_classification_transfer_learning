@@ -105,7 +105,7 @@ def plot_history(history_path):
         axs[1, 1].text(0.5, 0.5, 'No Iteration Data Available', ha='center')
 
     # 5. 自动整理布局并保存
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.tight_layout(rect=(0, 0.03, 1, 0.95))
     
     # 路径处理
     exp_dir = os.path.dirname(history_path)
