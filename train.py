@@ -52,6 +52,7 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, save_histor
     epoch_acc = correct / total
     return epoch_loss, epoch_acc, iter_stats
 
+
 def run_training(args):
     """
     主训练流程控制
@@ -80,7 +81,7 @@ def run_training(args):
         checkpoint = torch.load(args.resume, map_location=device)
         
         # 恢复模型配置参数
-        preserved_args = ['resume', 'epochs', 'save_dir', 'save_history']
+        preserved_args = ['resume', 'epochs', 'save_dir', 'save_history', 'warmup_epochs']
         checkpoint_args = checkpoint.get('args', {})
         for k, v in checkpoint_args.items():
             if k not in preserved_args:
@@ -127,6 +128,7 @@ def run_training(args):
     )
 
     # 4. 初始化
+    # 注意: 初始化模型时所有参数都是 requires_grad=True, 让 get_optimizer 可以收录所有参数
     model = get_baseline_model(model_name=args.model_name, num_classes=37, pretrained=args.pretrained).to(device)
     optimizer = get_optimizer(model, args.optimizer, args.lr_backbone, args.lr_head, args.weight_decay)
     scheduler = get_scheduler(optimizer, args)
@@ -138,29 +140,65 @@ def run_training(args):
         if scheduler and checkpoint.get('scheduler_state_dict'):
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
+    # 为 optimizer.param_groups 打上 is_head 标签
+    # 必须在 checkpoint 加载之后进行，防止被覆盖
+    head_param_ids = {id(p) for n, p in model.named_parameters() if "fc" in n}
+    for group in optimizer.param_groups:
+        # 如果组内有任何一个参数属于 head，则标记此组为 head 组
+        group['is_head'] = any(id(p) in head_param_ids for p in group['params'])
+
     # 5. 训练循环
     start_time = time.time()
     for epoch in range(start_epoch, args.epochs):
         print(f"\n[Epoch {epoch+1}/{args.epochs}]")
         
+        is_warmup = epoch < args.warmup_epochs
+
+        # 动态冻结/解冻 Backbone & LR 覆盖 
+        for name, param in model.named_parameters():
+            if "fc" not in name:
+                param.requires_grad = not is_warmup
+
+        # 对 LR 进行备份和覆写
+        for group in optimizer.param_groups:
+            if not group['is_head'] and is_warmup:
+                group['backup_lr'] = group['lr']  # 备份真实调度的 LR
+                group['lr'] = 0.0                 # 强制设为 0
+        
+        # 记录当前 Epoch 实际生效的 LR
+        epoch_head_lr = next((g['lr'] for g in optimizer.param_groups if g['is_head']), 0.0)
+        epoch_backbone_lr = next((g['lr'] for g in optimizer.param_groups if not g['is_head']), 0.0)
+
+        # 运行训练
         train_loss, train_acc, iter_stats = train_one_epoch(model, train_loader, criterion, optimizer, device, args.save_history)
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
 
+        # Scheduler Step 前恢复真实 LR 
+        for group in optimizer.param_groups:
+            if 'backup_lr' in group:
+                group['lr'] = group['backup_lr']
+                del group['backup_lr']
+
+        # 更新 Scheduler
         if scheduler:
             if isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
                 scheduler.step(val_acc)
             else:
                 scheduler.step()
 
-        current_lr = optimizer.param_groups[0]['lr']
         print(f"Train | Loss: {train_loss:.4f} | Acc: {train_acc:.4f}")
-        print(f"Val   | Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | LR: {current_lr:.6e}")
+        print(f"Val   | Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | Head LR: {epoch_head_lr:.6e} | Backbone LR: {epoch_backbone_lr:.6e}")
 
         # 6. 记录与保存
         if args.save_history:
             history['epoch_history'].append({
-                'epoch': epoch + 1, 'train_loss': train_loss, 'train_acc': train_acc,
-                'val_loss': val_loss, 'val_acc': val_acc, 'lr': current_lr
+                'epoch': epoch + 1, 
+                'train_loss': train_loss, 
+                'train_acc': train_acc,
+                'val_loss': val_loss, 
+                'val_acc': val_acc, 
+                'head_lr': epoch_head_lr,
+                'backbone_lr': epoch_backbone_lr
             })
             history['iter_history'].extend(iter_stats)
             with open(os.path.join(save_dir, 'history.json'), 'w') as f:
@@ -188,6 +226,7 @@ def run_training(args):
 
     return best_val_acc
 
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Oxford-IIIT Pet 图像分类训练脚本")
 
@@ -209,6 +248,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=15)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--num_workers', type=int, default=4)
+    parser.add_argument('--warmup_epochs', type=int, default=0, help='冻结 Backbone 进行 Warmup 的 Epoch 数量') # <--- 添加了 warmup 控制参数
 
     # --- 优化器与 Scheduler ---
     parser.add_argument('--optimizer', type=str, default='AdamW', choices=['Adam', 'AdamW', 'SGD'])
