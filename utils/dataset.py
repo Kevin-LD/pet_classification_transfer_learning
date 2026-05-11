@@ -15,7 +15,7 @@ def get_train_val_dataloaders(root='data', batch_size=32, image_size=224, num_wo
     
     # 训练集变换：包含数据增强
     train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(image_size, scale=(0.08, 1.0), ratio=(0.75, 1.33)),
+        transforms.RandomResizedCrop(image_size, scale=(0.1, 1.0), ratio=(0.75, 1.33)),
         transforms.RandomHorizontalFlip(),
         transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
         transforms.ToTensor(),
