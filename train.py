@@ -241,7 +241,7 @@ if __name__ == "__main__":
     parser.add_argument('--resume', type=str, default='', help='续训权重路径 (.pth)')
 
     # --- 训练参数 ---
-    parser.add_argument('--model_name', type=str, default='resnet18', choices=['resnet18', 'resnet34'])
+    parser.add_argument('--model_name', type=str, default='resnet34', choices=['resnet18', 'resnet34'])
     parser.add_argument('--pretrained', dest='pretrained', action='store_true')
     parser.add_argument('--no_pretrained', dest='pretrained', action='store_false')
     parser.set_defaults(pretrained=True)
