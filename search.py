@@ -23,7 +23,7 @@ def get_base_args():
         resume='',               
         
         # 模型与数据
-        model_name='resnet18',
+        model_name='resnet34',
         pretrained=True,
         num_workers=4,
         
@@ -51,26 +51,26 @@ def run_search(cli_args):
     search_type = cli_args.type
     num_trials = cli_args.trials
 
-    # 1. 定义搜索空间 (新增了 weight_decay)
+    # 1. 定义搜索空间
     search_space = {
         'lr_head': {
             'range': [1e-4, 5e-2], 
             'scale': 'log', 
-            'grid_values': [1e-3, 5e-3, 1e-2]
+            'grid_values': [5e-4, 1e-3, 5e-3, 1e-2]
         },
         'lr_backbone': {
             'range': [1e-6, 1e-4], 
             'scale': 'log', 
-            'grid_values': [1e-5, 5e-5]
+            'grid_values': [1e-5, 5e-5, 1e-4]
         },
         'weight_decay': {
             'range': [1e-5, 1e-2], 
             'scale': 'log', 
             'grid_values': [1e-5, 1e-4, 1e-3]
         },
-        'optimizer': {
-            'grid_values': ['AdamW', 'SGD']
-        },
+        # 'optimizer': {
+        #     'grid_values': ['AdamW', 'SGD']
+        # },
         'batch_size': {
             'grid_values': [32, 64]
         }
