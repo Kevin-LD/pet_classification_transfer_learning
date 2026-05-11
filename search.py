@@ -32,7 +32,7 @@ def get_base_args():
         lr_backbone=1e-5,
         lr_head=1e-3,
         weight_decay=1e-4,
-        batch_size=32,
+        batch_size=64,
         
         # 搜索阶段固定配置
         epochs=30,               # 固定搜索 Epochs 为 30
@@ -56,24 +56,24 @@ def run_search(cli_args):
         'lr_head': {
             'range': [1e-4, 5e-2], 
             'scale': 'log', 
-            'grid_values': [5e-4, 1e-3, 5e-3, 1e-2]
+            'grid_values': [5e-4, 1e-3, 2e-3]
         },
         'lr_backbone': {
             'range': [1e-6, 1e-4], 
             'scale': 'log', 
-            'grid_values': [1e-5, 5e-5, 1e-4]
+            'grid_values': [5e-6, 1e-5, 2e-5]
         },
         'weight_decay': {
             'range': [1e-5, 1e-2], 
             'scale': 'log', 
             'grid_values': [1e-5, 1e-4, 1e-3]
-        },
+        }
         # 'optimizer': {
         #     'grid_values': ['AdamW', 'SGD']
         # },
-        'batch_size': {
-            'grid_values': [32, 64]
-        }
+        # 'batch_size': {
+        #     'grid_values': [32, 64]
+        # }
     }
 
     keys = list(search_space.keys())
