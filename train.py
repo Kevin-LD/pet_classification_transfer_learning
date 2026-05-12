@@ -15,7 +15,7 @@ if current_dir not in sys.path:
 
 from utils.dataset import get_train_val_dataloaders
 from models.resnet_custom import get_baseline_model
-from utils.optim import get_optimizer, get_scheduler
+from utils.optim import get_optimizer, get_scheduler, set_parameter_requires_grad
 from utils.eval import evaluate
 
 
@@ -147,8 +147,9 @@ def run_training(args):
         if scheduler and checkpoint.get('scheduler_state_dict'):
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
-    # 为 optimizer.param_groups 打上 is_head 标签
-    head_param_ids = {id(p) for n, p in model.named_parameters() if n.startswith("fc.")}
+    # 为 optimizer.param_groups 打上 is_head 标签 
+    # SE blocks 是随机初始化的新增模块，为加速其收敛，将其划入 head 参数组以应用较高的初始学习率。
+    head_param_ids = {id(p) for n, p in model.named_parameters() if n.startswith("fc.") or "se." in n}
     for group in optimizer.param_groups:
         # 如果组内有任何一个参数属于 head，则标记此组为 head 组
         group['is_head'] = any(id(p) in head_param_ids for p in group['params'])
@@ -161,10 +162,7 @@ def run_training(args):
         is_warmup = epoch < args.warmup_epochs
 
         # 动态冻结/解冻 Backbone & LR 覆盖 
-        # 修复：同样使用 startswith 精确控制 head
-        for name, param in model.named_parameters():
-            if not name.startswith("fc."):
-                param.requires_grad = not is_warmup
+        set_parameter_requires_grad(model, freeze_backbone=is_warmup)
 
         # 对 LR 进行备份和覆写
         for group in optimizer.param_groups:

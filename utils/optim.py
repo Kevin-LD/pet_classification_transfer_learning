@@ -7,8 +7,8 @@ def set_parameter_requires_grad(model, freeze_backbone=True):
     """
     if freeze_backbone:
         for name, param in model.named_parameters():
-            # 只有全连接层不冻结
-            if not name.startswith("fc."):
+            # 全连接层和 SE 层不冻结
+            if not name.startswith("fc.") and not "se." in name:
                 param.requires_grad = False
     else:
         for param in model.parameters():
@@ -30,8 +30,9 @@ def get_optimizer(model, opt_type='AdamW', lr_backbone=1e-5, lr_head=1e-3, weigh
     for name, param in model.named_parameters():
         if not param.requires_grad:
             continue
-            
-        is_head = name.startswith("fc.")
+        
+        # 将随机初始化的 SE 层与 FC 头归为一组，使用 lr_head 以实现快速适配。
+        is_head = name.startswith("fc.") or "se." in name
         
         # 只要是 1D 参数（Bias, BN 权重/偏置），就不进行 Weight Decay
         if param.ndimension() == 1:
