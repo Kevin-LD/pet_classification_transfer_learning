@@ -8,7 +8,7 @@ project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from models.baseline import get_baseline_model
+from models.resnet_custom import get_baseline_model
 from utils.optim import set_parameter_requires_grad, get_optimizer
 
 def test_model_structure():
