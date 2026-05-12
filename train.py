@@ -4,6 +4,7 @@ import time
 import json
 import argparse
 from datetime import datetime
+
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -13,9 +14,10 @@ if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
 from utils.dataset import get_train_val_dataloaders
-from models.baseline import get_baseline_model
+from models.resnet_custom import get_baseline_model
 from utils.optim import get_optimizer, get_scheduler
 from utils.eval import evaluate
+
 
 def train_one_epoch(model, dataloader, criterion, optimizer, device, save_history=True):
     """
@@ -90,7 +92,7 @@ def run_training(args):
         start_epoch = checkpoint['epoch'] + 1
         best_val_acc = checkpoint.get('best_val_acc', 0.0)
         
-        #检查已训练的 Epoch 数是否超过当前参数
+        # 检查已训练的 Epoch 数是否超过当前参数
         if start_epoch >= args.epochs:
             print("\n" + "!"*60)
             print(f"警告: 提供的 Checkpoint 已经训练了 {start_epoch} 个 Epoch。")
@@ -128,21 +130,25 @@ def run_training(args):
     )
 
     # 4. 初始化
-    # 注意: 初始化模型时所有参数都是 requires_grad=True, 让 get_optimizer 可以收录所有参数
-    model = get_baseline_model(model_name=args.model_name, num_classes=37, pretrained=args.pretrained).to(device)
+    model = get_baseline_model(
+        model_name=args.model_name, 
+        num_classes=37, 
+        pretrained=args.pretrained,
+        use_attention=args.use_attention
+    ).to(device)
+
     optimizer = get_optimizer(model, args.optimizer, args.lr_backbone, args.lr_head, args.weight_decay)
     scheduler = get_scheduler(optimizer, args)
     criterion = nn.CrossEntropyLoss()
 
     if checkpoint:
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=True)
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         if scheduler and checkpoint.get('scheduler_state_dict'):
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
     # 为 optimizer.param_groups 打上 is_head 标签
-    # 必须在 checkpoint 加载之后进行，防止被覆盖
-    head_param_ids = {id(p) for n, p in model.named_parameters() if "fc" in n}
+    head_param_ids = {id(p) for n, p in model.named_parameters() if n.startswith("fc.")}
     for group in optimizer.param_groups:
         # 如果组内有任何一个参数属于 head，则标记此组为 head 组
         group['is_head'] = any(id(p) in head_param_ids for p in group['params'])
@@ -155,8 +161,9 @@ def run_training(args):
         is_warmup = epoch < args.warmup_epochs
 
         # 动态冻结/解冻 Backbone & LR 覆盖 
+        # 修复：同样使用 startswith 精确控制 head
         for name, param in model.named_parameters():
-            if "fc" not in name:
+            if not name.startswith("fc."):
                 param.requires_grad = not is_warmup
 
         # 对 LR 进行备份和覆写
@@ -207,6 +214,7 @@ def run_training(args):
         checkpoint_dict = {
             'epoch': epoch,
             'model_name': args.model_name,
+            'use_attention': args.use_attention,
             'best_val_acc': max(val_acc, best_val_acc),
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
@@ -248,7 +256,8 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=15)
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--num_workers', type=int, default=4)
-    parser.add_argument('--warmup_epochs', type=int, default=0, help='冻结 Backbone 进行 Warmup 的 Epoch 数量') # <--- 添加了 warmup 控制参数
+    parser.add_argument('--warmup_epochs', type=int, default=0, help='冻结 Backbone 进行 Warmup 的 Epoch 数量')
+    parser.add_argument('--use_attention', type=str, default=None, choices=['SE'], help='是否在残差块中加入注意力机制')
 
     # --- 优化器与 Scheduler ---
     parser.add_argument('--optimizer', type=str, default='AdamW', choices=['Adam', 'AdamW', 'SGD'])
