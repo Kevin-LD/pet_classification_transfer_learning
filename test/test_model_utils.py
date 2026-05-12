@@ -14,7 +14,7 @@ from utils.optim import set_parameter_requires_grad, get_optimizer
 def test_model_structure():
     print(">>> 测试 1: 模型结构与输出层修改")
     num_classes = 37
-    model = get_baseline_model(model_name='resnet18', num_classes=num_classes, pretrained=False)
+    model = get_baseline_model(model_name='resnet18', num_classes=num_classes, pretrained=False, use_attention="SE")
     
     # 检查输出维度
     out_features = model.fc.out_features
