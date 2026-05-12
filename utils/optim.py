@@ -8,7 +8,7 @@ def set_parameter_requires_grad(model, freeze_backbone=True):
     if freeze_backbone:
         for name, param in model.named_parameters():
             # 全连接层和 SE 层不冻结
-            if not name.startswith("fc.") and not "se." in name:
+            if not name.startswith("fc.") and not "se." in name and not "head" in name:
                 param.requires_grad = False
     else:
         for param in model.parameters():
@@ -16,10 +16,11 @@ def set_parameter_requires_grad(model, freeze_backbone=True):
 
 def get_optimizer(model, opt_type='AdamW', lr_backbone=1e-5, lr_head=1e-3, weight_decay=1e-4):
     """
-    优化器构建函数
+    优化器构建函数：支持 ResNet (含 SE 模块) 与 ViT 模型的参数分组
     """
     
     # 准备四个参数组的容器
+    # 将参数分为：Backbone/Head x 有权重衰减/无权重衰减
     params_groups = {
         "backbone_decay": {"params": [], "lr": lr_backbone, "weight_decay": weight_decay},
         "backbone_no_decay": {"params": [], "lr": lr_backbone, "weight_decay": 0.0},
@@ -31,10 +32,13 @@ def get_optimizer(model, opt_type='AdamW', lr_backbone=1e-5, lr_head=1e-3, weigh
         if not param.requires_grad:
             continue
         
-        # 将随机初始化的 SE 层与 FC 头归为一组，使用 lr_head 以实现快速适配。
-        is_head = name.startswith("fc.") or "se." in name
+        # 逻辑判定：哪些属于 "Head" 部分
+        # 1. ResNet: 分类头 fc. 以及新增的注意力模块 se.
+        # 2. ViT: 分类头 head
+        is_head = name.startswith("fc.") or "se." in name or "head" in name
         
-        # 只要是 1D 参数（Bias, BN 权重/偏置），就不进行 Weight Decay
+        # 权重衰减判定：
+        # 只要是 1D 参数（如 Bias, BN 权重/偏置, LN 权重/偏置），就不进行 Weight Decay
         if param.ndimension() == 1:
             group_key = "head_no_decay" if is_head else "backbone_no_decay"
         else:
@@ -51,12 +55,13 @@ def get_optimizer(model, opt_type='AdamW', lr_backbone=1e-5, lr_head=1e-3, weigh
     elif opt_type == 'Adam':
         optimizer = torch.optim.Adam(final_params)
     elif opt_type == 'SGD':
-        # SGD 通常配合 momentum 使用
+        # SGD 通常配合 momentum 使用以加速收敛
         optimizer = torch.optim.SGD(final_params, momentum=0.9)
     else:
         raise ValueError(f"Unsupported optimizer type: {opt_type}")
         
     return optimizer
+
 
 def get_scheduler(optimizer, args):
     """

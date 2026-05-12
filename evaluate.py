@@ -4,18 +4,19 @@ import argparse
 import os
 import json
 
-# 1. 导入工具函数
 from utils.eval import evaluate
 from utils.dataset import get_test_dataloader
 from models.resnet_custom import get_baseline_model
+from models.vit_tiny import get_vit_tiny
 
 def get_model_info(model_path):
     """
     优先级：1. 从 .pth 文件解析 -> 2. 从 config.json 解析
-    返回: model_name, use_attention, checkpoint
+    返回: model_name, use_attention, use_vit, checkpoint
     """
     model_name = None
     use_attention = None
+    use_vit = False
     checkpoint = None
 
     # 尝试加载模型文件
@@ -27,17 +28,20 @@ def get_model_info(model_path):
                 # 尝试从根字典获取
                 model_name = checkpoint.get('model_name')
                 use_attention = checkpoint.get('use_attention')
+                use_vit = checkpoint.get('use_vit', False)
                 
-                # 尝试从保存的 args 字典获取（兼容 train.py 的保存逻辑）
+                # 尝试从保存的 args 字典获取
                 if 'args' in checkpoint:
                     args_in_ckpt = checkpoint['args']
                     if model_name is None:
                         model_name = args_in_ckpt.get('model_name')
                     if use_attention is None:
                         use_attention = args_in_ckpt.get('use_attention')
+                    if not use_vit:
+                        use_vit = args_in_ckpt.get('use_vit', False)
                 
                 if model_name:
-                    print(f"[*] 在权重文件中找到模型配置: name={model_name}, attention={use_attention}")
+                    print(f"[*] 在权重文件中找到模型配置: name={model_name}, attention={use_attention}, use_vit={use_vit}")
         except Exception as e:
             print(f"警告: 无法解析权重文件中的元数据: {e}")
 
@@ -52,32 +56,41 @@ def get_model_info(model_path):
                         model_name = config.get('model_name')
                     if use_attention is None:
                         use_attention = config.get('use_attention')
-                    print(f"[*] 在 config.json 中找到配置: name={model_name}, attention={use_attention}")
+                    if not use_vit:
+                        use_vit = config.get('use_vit', False)
+                    print(f"[*] 在 config.json 中找到配置: name={model_name}, attention={use_attention}, use_vit={use_vit}")
             except Exception:
                 pass
 
     # 最终兜底
     if model_name is None:
         model_name = "resnet18"
-        print(f"[!] 未找到模型名称元数据。使用默认值: name={model_name}, attention={use_attention}")
+        print(f"[!] 未找到模型名称元数据。使用默认值: name={model_name}, attention={use_attention}, use_vit={use_vit}")
     
-    return model_name, use_attention, checkpoint
+    return model_name, use_attention, use_vit, checkpoint
 
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"使用设备: {device}")
 
     # 2. 获取模型详细信息
-    model_name, use_attention, checkpoint = get_model_info(args.model_path)
+    model_name, use_attention, use_vit, checkpoint = get_model_info(args.model_path)
 
-    # 3. 初始化模型结构 (传入解析出的 use_attention)
-    print(f"正在构建模型结构: {model_name} (Attention: {use_attention})...")
-    model = get_baseline_model(
-        model_name=model_name,
-        num_classes=37, 
-        pretrained=False,
-        use_attention=use_attention
-    )
+    # 3. 初始化模型结构
+    if use_vit:
+        print(f"正在构建模型结构: ViT Tiny (vit_tiny)...")
+        model = get_vit_tiny(
+            num_classes=37, 
+            pretrained=False
+        )
+    else:
+        print(f"正在构建模型结构: {model_name} (Attention: {use_attention})...")
+        model = get_baseline_model(
+            model_name=model_name,
+            num_classes=37, 
+            pretrained=False,
+            use_attention=use_attention
+        )
 
     # 4. 加载权重
     if checkpoint is None:
@@ -116,8 +129,10 @@ def main(args):
     # 7. 打印结果
     print("\n" + "="*40)
     print(f"评估结果")
+    print(f" - 模型类型:   {'Vision Transformer' if use_vit else 'ResNet'}")
     print(f" - 模型名称:   {model_name}")
-    print(f" - 注意力机制: {use_attention if use_attention else 'None'}")
+    if not use_vit:
+        print(f" - 注意力机制: {use_attention if use_attention else 'None'}")
     print(f" - 准确率:     {acc * 100:.2f}%")
     print(f" - 损失:       {loss:.4f}")
     print("="*40)

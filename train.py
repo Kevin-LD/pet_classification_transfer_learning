@@ -15,6 +15,7 @@ if current_dir not in sys.path:
 
 from utils.dataset import get_train_val_dataloaders
 from models.resnet_custom import get_baseline_model
+from models.vit_tiny import get_vit_tiny  # 导入 ViT 定义
 from utils.optim import get_optimizer, get_scheduler, set_parameter_requires_grad
 from utils.eval import evaluate
 
@@ -83,6 +84,7 @@ def run_training(args):
         checkpoint = torch.load(args.resume, map_location=device)
         
         # 恢复模型配置参数
+        # 注意：这里保留 user 指定的某些关键参数，其余从 checkpoint 恢复
         preserved_args = ['resume', 'epochs', 'save_dir', 'save_history', 'warmup_epochs']
         checkpoint_args = checkpoint.get('args', {})
         for k, v in checkpoint_args.items():
@@ -129,13 +131,20 @@ def run_training(args):
         batch_size=args.batch_size, image_size=224, num_workers=args.num_workers
     )
 
-    # 4. 初始化
-    model = get_baseline_model(
-        model_name=args.model_name, 
-        num_classes=37, 
-        pretrained=args.pretrained,
-        use_attention=args.use_attention
-    ).to(device)
+    # 4. 初始化模型
+    if args.use_vit:
+        # 使用 ViT 模型
+        model = get_vit_tiny(num_classes=37, pretrained=args.pretrained).to(device)
+        print("Model: Initialized vit_tiny.")
+    else:
+        # 使用 ResNet 模型
+        model = get_baseline_model(
+            model_name=args.model_name, 
+            num_classes=37, 
+            pretrained=args.pretrained,
+            use_attention=args.use_attention
+        ).to(device)
+        print(f"Model: Initialized {args.model_name}.")
 
     optimizer = get_optimizer(model, args.optimizer, args.lr_backbone, args.lr_head, args.weight_decay)
     scheduler = get_scheduler(optimizer, args)
@@ -148,8 +157,13 @@ def run_training(args):
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
     # 为 optimizer.param_groups 打上 is_head 标签 
-    # SE blocks 是随机初始化的新增模块，为加速其收敛，将其划入 head 参数组以应用较高的初始学习率。
-    head_param_ids = {id(p) for n, p in model.named_parameters() if n.startswith("fc.") or "se." in n}
+    # ResNet 使用 fc. 开头，ViT 包括 "head" 字符
+    if args.use_vit:
+        head_param_ids = {id(p) for n, p in model.named_parameters() if "head" in n}
+    else:
+        # SE blocks 是随机初始化的新增模块，为加速其收敛，将其划入 head 参数组以应用较高的初始学习率。
+        head_param_ids = {id(p) for n, p in model.named_parameters() if n.startswith("fc.") or "se." in n}
+
     for group in optimizer.param_groups:
         # 如果组内有任何一个参数属于 head，则标记此组为 head 组
         group['is_head'] = any(id(p) in head_param_ids for p in group['params'])
@@ -168,7 +182,7 @@ def run_training(args):
         for group in optimizer.param_groups:
             if not group['is_head'] and is_warmup:
                 group['backup_lr'] = group['lr']  # 备份真实调度的 LR
-                group['lr'] = 0.0                 # 强制设为 0
+                group['lr'] = 0.0                  # 强制设为 0
         
         # 记录当前 Epoch 实际生效的 LR
         epoch_head_lr = next((g['lr'] for g in optimizer.param_groups if g['is_head']), 0.0)
@@ -211,7 +225,8 @@ def run_training(args):
 
         checkpoint_dict = {
             'epoch': epoch,
-            'model_name': args.model_name,
+            'model_name': 'vit_tiny' if args.use_vit else args.model_name,
+            'use_vit': args.use_vit,
             'use_attention': args.use_attention,
             'best_val_acc': max(val_acc, best_val_acc),
             'model_state_dict': model.state_dict(),
@@ -247,7 +262,8 @@ if __name__ == "__main__":
     parser.add_argument('--resume', type=str, default='', help='续训权重路径 (.pth)')
 
     # --- 训练参数 ---
-    parser.add_argument('--model_name', type=str, default='resnet34', choices=['resnet18', 'resnet34'])
+    parser.add_argument('--use_vit', action='store_true', help='是否使用 Vision Transformer (vit_tiny)')
+    parser.add_argument('--model_name', type=str, default='resnet34', choices=['resnet18', 'resnet34'], help='当不使用 ViT 时选择的 ResNet 模型')
     parser.add_argument('--pretrained', dest='pretrained', action='store_true')
     parser.add_argument('--no_pretrained', dest='pretrained', action='store_false')
     parser.set_defaults(pretrained=True)
@@ -255,7 +271,7 @@ if __name__ == "__main__":
     parser.add_argument('--batch_size', type=int, default=32)
     parser.add_argument('--num_workers', type=int, default=4)
     parser.add_argument('--warmup_epochs', type=int, default=0, help='冻结 Backbone 进行 Warmup 的 Epoch 数量')
-    parser.add_argument('--use_attention', type=str, default=None, choices=['SE'], help='是否在残差块中加入注意力机制')
+    parser.add_argument('--use_attention', type=str, default=None, choices=['SE'], help='是否在残差块中加入注意力机制 (仅限 ResNet)')
 
     # --- 优化器与 Scheduler ---
     parser.add_argument('--optimizer', type=str, default='AdamW', choices=['Adam', 'AdamW', 'SGD'])
