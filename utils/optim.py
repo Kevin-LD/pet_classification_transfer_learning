@@ -8,7 +8,7 @@ def set_parameter_requires_grad(model, freeze_backbone=True):
     if freeze_backbone:
         for name, param in model.named_parameters():
             # 只有全连接层不冻结
-            if "fc" not in name:
+            if not name.startswith("fc."):
                 param.requires_grad = False
     else:
         for param in model.parameters():
@@ -31,7 +31,7 @@ def get_optimizer(model, opt_type='AdamW', lr_backbone=1e-5, lr_head=1e-3, weigh
         if not param.requires_grad:
             continue
             
-        is_head = "fc" in name
+        is_head = name.startswith("fc.")
         
         # 只要是 1D 参数（Bias, BN 权重/偏置），就不进行 Weight Decay
         if param.ndimension() == 1:
