@@ -9,6 +9,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
+import wandb
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
@@ -20,7 +22,7 @@ from utils.optim import get_optimizer, get_scheduler, set_parameter_requires_gra
 from utils.eval import evaluate
 
 
-def train_one_epoch(model, dataloader, criterion, optimizer, device, save_history=True):
+def train_one_epoch(model, dataloader, criterion, optimizer, device, save_history=True, use_wandb=True):
     """
     训练一个 Epoch 的逻辑
     """
@@ -40,6 +42,10 @@ def train_one_epoch(model, dataloader, criterion, optimizer, device, save_histor
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+
+            # 记录 iteration loss
+            if use_wandb:
+                wandb.log({"train/batch_loss": loss.item()})
 
             running_loss += loss.item() * inputs.size(0)
             _, predicted = outputs.max(1)
@@ -73,6 +79,9 @@ def run_training(args):
     best_val_acc = 0.0
     history = {'epoch_history': [], 'iter_history': []}
     checkpoint = None
+    
+    # 为当前实验默认生成一个新的 wandb ID
+    wandb_run_id = wandb.util.generate_id() if args.use_wandb else None
 
     if args.resume and os.path.isfile(args.resume):
         # 如果是续训，默认保存路径设为权重所在的文件夹
@@ -85,7 +94,7 @@ def run_training(args):
         
         # 恢复模型配置参数
         # 注意：这里保留 user 指定的某些关键参数，其余从 checkpoint 恢复
-        preserved_args = ['resume', 'epochs', 'save_dir', 'save_history', 'warmup_epochs']
+        preserved_args = ['resume', 'epochs', 'save_dir', 'save_history', 'warmup_epochs', 'use_wandb']
         checkpoint_args = checkpoint.get('args', {})
         for k, v in checkpoint_args.items():
             if k not in preserved_args:
@@ -93,6 +102,10 @@ def run_training(args):
         
         start_epoch = checkpoint['epoch'] + 1
         best_val_acc = checkpoint.get('best_val_acc', 0.0)
+        
+        # 尝试从老权重中恢复 wandb ID 以便图表拼接
+        if args.use_wandb:
+            wandb_run_id = checkpoint.get('wandb_id', wandb_run_id)
         
         # 检查已训练的 Epoch 数是否超过当前参数
         if start_epoch >= args.epochs:
@@ -168,6 +181,18 @@ def run_training(args):
         # 如果组内有任何一个参数属于 head，则标记此组为 head 组
         group['is_head'] = any(id(p) in head_param_ids for p in group['params'])
 
+    
+    # 初始化 wandb
+    if args.use_wandb:
+        wandb.init(
+            project="oxford-pet-classification", # 项目名称
+            config=vars(args),                  # 将 argparse 的参数全部记录
+            name=f"{args.model_name}_{datetime.now().strftime('%m%d_%H%M')}", # 实验名称
+            resume="allow",                      # 允许续训关联
+            id=wandb_run_id                      # 使用保存的/新生成的固定 id
+        )
+        # wandb.watch(model, log="all", log_freq=100)
+
     # 5. 训练循环
     start_time = time.time()
     for epoch in range(start_epoch, args.epochs):
@@ -188,8 +213,10 @@ def run_training(args):
         epoch_head_lr = next((g['lr'] for g in optimizer.param_groups if g['is_head']), 0.0)
         epoch_backbone_lr = next((g['lr'] for g in optimizer.param_groups if not g['is_head']), 0.0)
 
-        # 运行训练
-        train_loss, train_acc, iter_stats = train_one_epoch(model, train_loader, criterion, optimizer, device, args.save_history)
+        # 运行训练 (传入 args.use_wandb)
+        train_loss, train_acc, iter_stats = train_one_epoch(
+            model, train_loader, criterion, optimizer, device, args.save_history, args.use_wandb
+        )
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
 
         # Scheduler Step 前恢复真实 LR 
@@ -209,6 +236,18 @@ def run_training(args):
         print(f"Val   | Loss: {val_loss:.4f} | Acc: {val_acc:.4f} | Head LR: {epoch_head_lr:.6e} | Backbone LR: {epoch_backbone_lr:.6e}")
 
         # 6. 记录与保存
+        if args.use_wandb:
+            wandb.log({
+                "epoch": epoch + 1,
+                "train/loss": train_loss,
+                "train/acc": train_acc,
+                "val/loss": val_loss,
+                "val/acc": val_acc,
+                "lr/head": epoch_head_lr,
+                "lr/backbone": epoch_backbone_lr,
+                "best_val_acc": max(val_acc, best_val_acc)
+            })
+
         if args.save_history:
             history['epoch_history'].append({
                 'epoch': epoch + 1, 
@@ -233,7 +272,8 @@ def run_training(args):
             'optimizer_state_dict': optimizer.state_dict(),
             'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
             'history': history if args.save_history else None,
-            'args': vars(args)
+            'args': vars(args),
+            'wandb_id': wandb_run_id # 保存当前 Run ID 供未来续训使用
         }
 
         torch.save(checkpoint_dict, os.path.join(save_dir, "latest_model.pth"))
@@ -245,6 +285,9 @@ def run_training(args):
     total_time = time.time() - start_time
     print(f"\n训练完成! 总耗时: {total_time/60:.2f} 分钟. Best Val Acc: {best_val_acc:.4f}")
 
+    if args.use_wandb:
+        wandb.finish()
+    
     return best_val_acc
 
 
@@ -260,6 +303,10 @@ if __name__ == "__main__":
     parser.add_argument('--no_save_history', dest='save_history', action='store_false')
     parser.set_defaults(save_history=True)
     parser.add_argument('--resume', type=str, default='', help='续训权重路径 (.pth)')
+    
+    # wandb 离线开关 (默认开启，加 --no_wandb 则关闭)
+    parser.add_argument('--no_wandb', dest='use_wandb', action='store_false', help='离线调试时关闭 wandb 记录')
+    parser.set_defaults(use_wandb=True)
 
     # --- 训练参数 ---
     parser.add_argument('--use_vit', action='store_true', help='是否使用 Vision Transformer (vit_tiny)')
