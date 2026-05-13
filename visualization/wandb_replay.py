@@ -59,11 +59,11 @@ if __name__ == "__main__":
     experiments = [
         # {"path": "runs/exp_20260511_132554_dataaug_0.12/history.json", "name": "Data Augmentation (Crop size lower bound: 0.12)"},
         # {"path": "runs/exp_20260511_133422_dataaug_0.08/history.json", "name": "Data Augmentation (Crop size lower bound: 0.08)"},
-        {"path": "runs/exp_20260511_134100_dataaug_0.1/history.json", "name": "Data Augmentation (Crop size lower bound: 0.1)"},
+        {"path": "runs/exp_20260511_195042_search_3_epoch_30_val_acc_0.9538/history.json", "name": "Training With The Best Configuration"},
     ]
 
     # 项目名称
-    PROJECT = "Data Augmentation Comparison"
+    PROJECT = "Resnet_Best_Config"
 
     for exp in experiments:
         upload_replay(exp["path"], exp["name"], PROJECT)
