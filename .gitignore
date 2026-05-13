@@ -9,3 +9,6 @@ data/
 
 # experiments
 runs/
+
+# Weights & Biases
+wandb/
