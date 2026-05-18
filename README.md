@@ -25,8 +25,8 @@ python evaluate.py -h
 ```
 其余可视化脚本与超参数搜索脚本的使用方法同样可通过 `-h` 查看。  
 ## 模型权重
-模型权重下载链接：https://drive.google.com/file/d/1s2ZIvFHIIrooQfqziZymulcBspTyGJWn/view?usp=sharing
+模型权重下载链接：[Google Drive Link](https://drive.google.com/file/d/1s2ZIvFHIIrooQfqziZymulcBspTyGJWn/view?usp=sharing)
 ## 相关仓库
-- Task 2: https://github.com/Kevin-LD/visdrone_mot  
+- Task 2: [Scene Object Detection and Multi-Object Tracking](https://github.com/Kevin-LD/visdrone_mot)  
 - Task 3: TODO  
-- Report: https://github.com/Kevin-LD/cv_midterm_report  
+- Report: [TODO](https://github.com/Kevin-LD/cv_midterm_report)  
