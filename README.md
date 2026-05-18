@@ -28,5 +28,5 @@ python evaluate.py -h
 模型权重下载链接：[Google Drive Link](https://drive.google.com/file/d/1s2ZIvFHIIrooQfqziZymulcBspTyGJWn/view?usp=sharing)
 ## 相关仓库
 - Task 2: [Scene Object Detection and Multi-Object Tracking](https://github.com/Kevin-LD/visdrone_mot)  
-- Task 3: TODO  
-- Report: [TODO](https://github.com/Kevin-LD/cv_midterm_report)  
+- Task 3: [Pixel-level-Training-Of-Image-Segmentation](https://github.com/F1shermanCNN/Pixel-level-Training-Of-Image-Segmentation#pixel-level-training-of-image-segmentation)
+- Report: [Computer Vision Midterm Report](https://github.com/Kevin-LD/cv_midterm_report)  
